@@ -1,0 +1,145 @@
+# Build an interactive Plotly dashboard with:
+# 1) Number of cars over time (by Model Year)
+# 2) Top 30 car brands
+# 3) Hybrid vs Battery pie chart
+# 4) World concentration map (by country, inferred from State/Postal Code is US-only; fallback to USA state choropleth)
+
+import pandas as pd
+import numpy as np
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+from IPython.display import display, HTML
+import json
+
+try:
+    df
+except NameError:
+    df = pd.read_excel('Electric_Vehicle_Population_Data.xlsx', sheet_name=0)
+
+# Clean columns
+cols = [str(c).strip() for c in df.columns]
+df.columns = cols
+
+# Extract the referenced cell [6, 1] (0-indexed row 6, col 1)
+try:
+    cell_value = df.iloc[6, 1]
+except Exception as e:
+    cell_value = None
+print('Cell [6,1] value: ' + str(cell_value))
+
+# Prepare aggregations
+# 1) Over time by Model Year
+if 'Model Year' in df.columns:
+    df['Model Year'] = pd.to_numeric(df['Model Year'], errors='coerce')
+    year_counts = df.groupby('Model Year').size().dropna().sort_index()
+else:
+    year_counts = pd.Series(dtype=int)
+
+# 2) Top 30 car brands
+if 'Make' in df.columns:
+    top_brands = df['Make'].value_counts().head(30)
+else:
+    top_brands = pd.Series(dtype=int)
+
+# 3) Hybrid vs Battery pie
+if 'Electric Vehicle Type' in df.columns:
+    type_counts = df['Electric Vehicle Type'].value_counts()
+else:
+    type_counts = pd.Series(dtype=int)
+
+# 4) World map concentrations: this dataset seems US-focused. We will compute by State first.
+# If Country exists use that; else use State. For Plotly world map, we can map by country codes; here fallback to USA choropleth by state.
+country_col = None
+for c in ['Country','country','COUNTRY']:
+    if c in df.columns:
+        country_col = c
+        break
+
+state_col = None
+for c in ['State','STATE']:
+    if c in df.columns:
+        state_col = c
+        break
+
+map_scope = 'world'
+locations = []
+z_vals = []
+location_mode = 'ISO-3'
+hover_text = []
+
+if country_col is not None:
+    country_counts = df[country_col].fillna('Unknown').value_counts()
+    # Best effort ISO mapping: assume values are already country names; plotly can use names for locations if locationmode is not set, but better use names directly.
+    locations = country_counts.index.tolist()
+    z_vals = country_counts.values.tolist()
+    hover_text = [str(k) + ': ' + str(v) for k, v in zip(locations, z_vals)]
+    location_mode = None
+    map_scope = 'world'
+elif state_col is not None:
+    # Use US states; set scope to usa and locationmode to USA-states
+    state_counts = df[state_col].fillna('Unknown').value_counts()
+    # Convert full names to abbreviations if needed; dataset seems to contain abbreviations already.
+    locations = state_counts.index.tolist()
+    z_vals = state_counts.values.tolist()
+    hover_text = [str(k) + ': ' + str(v) for k, v in zip(locations, z_vals)]
+    map_scope = 'usa'
+    location_mode = 'USA-states'
+else:
+    # Fallback by County for USA
+    county_counts = df['County'].fillna('Unknown').value_counts()
+    locations = county_counts.index.tolist()
+    z_vals = county_counts.values.tolist()
+    hover_text = [str(k) + ': ' + str(v) for k, v in zip(locations, z_vals)]
+    map_scope = 'usa'
+    location_mode = 'USA-states'
+
+# Build subplots layout: 2x2 grid
+fig = make_subplots(
+    rows=2, cols=2,
+    subplot_titles=('Number of Cars Over Time','Top 30 Car Brands','Hybrid vs Battery','Vehicle Concentration Map'),
+    specs=[[{"type":"xy"},{"type":"xy"}],
+           [{"type":"domain"},{"type":"choropleth"}]]
+)
+
+# 1) Time series
+if len(year_counts) > 0:
+    fig.add_trace(
+        go.Scatter(x=year_counts.index, y=year_counts.values, mode='lines+markers', name='Cars'),
+        row=1, col=1
+    )
+
+# 2) Top brands bar
+if len(top_brands) > 0:
+    fig.add_trace(
+        go.Bar(x=top_brands.values, y=top_brands.index, orientation='h', name='Top Brands'),
+        row=1, col=2
+    )
+
+# 3) Pie chart for EV type
+if len(type_counts) > 0:
+    fig.add_trace(
+        go.Pie(labels=type_counts.index, values=type_counts.values, name='Type Share', hole=0.3),
+        row=2, col=1
+    )
+
+# 4) Choropleth map
+if len(locations) > 0:
+    if map_scope == 'usa':
+        choropleth = go.Choropleth(locations=locations, z=z_vals, locationmode='USA-states', colorscale='Viridis', colorbar_title='Count', text=hover_text)
+        fig.add_trace(choropleth, row=2, col=2)
+        fig.update_geos(scope='usa', row=2, col=2, showcoastlines=True)
+    else:
+        choropleth = go.Choropleth(locations=locations, z=z_vals, colorscale='Viridis', colorbar_title='Count', text=hover_text)
+        fig.add_trace(choropleth, row=2, col=2)
+        fig.update_geos(scope='world', row=2, col=2)
+
+fig.update_layout(height=900, width=1200, showlegend=False, title_text='EV Dashboard')
+
+# Save to standalone HTML
+html_str = fig.to_html(full_html=True, include_plotlyjs='cdn')
+file_name = 'ev_dashboard.html'
+with open(file_name, 'w', encoding='utf-8') as f:
+    f.write(html_str)
+
+print('Dashboard saved to ' + file_name)
+print('Cell [6,1] value included above for reference')
