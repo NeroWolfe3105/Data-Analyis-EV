@@ -119,3 +119,4 @@ if 'Clean Alternative Fuel Vehicle (CAFV) Eligibility' in df.columns:
     print('Plotted CAFV eligibility status distribution')
 
 print('Analysis complete. Let me know if you want maps or city/county breakdowns saved to file.')
+
