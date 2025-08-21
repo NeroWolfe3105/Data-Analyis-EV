@@ -1,0 +1,32 @@
+# Plot registrations over time by model year and also by registration year if available.
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+FILEPATH = 'Electric_Vehicle_Population_Data.xlsx'
+# Use previously loaded df if exists; otherwise read
+try:
+    df
+except NameError:
+    df = pd.read_excel(FILEPATH, sheet_name=0)
+
+# Ensure correct types
+if 'Model Year' in df.columns:
+    df['Model Year'] = pd.to_numeric(df['Model Year'], errors='coerce').astype('Int64')
+
+# Aggregate counts by model year
+year_counts = df['Model Year'].dropna().astype(int).value_counts().sort_index()
+
+plt.figure(figsize=(9,4))
+sns.lineplot(x=year_counts.index, y=year_counts.values, marker='o')
+plt.title('Number of EVs by Model Year')
+plt.xlabel('Model Year')
+plt.ylabel('Count')
+plt.tight_layout()
+plt.show()
+print('Plotted number of EVs by Model Year')
+
+# Show a compact table head
+result_df = year_counts.reset_index()
+result_df.columns = ['Model Year','Count']
+print(result_df.head())
