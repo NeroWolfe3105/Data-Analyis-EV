@@ -1,0 +1,121 @@
+# This cell reads all sheets from the uploaded Excel, shows heads, and does a quick exploratory analysis with charts.
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+
+# Read all sheets using the provided helper
+FILEPATH = 'Electric_Vehicle_Population_Data.xlsx'
+dataframes = read_all_sheets_from_excel(FILEPATH)
+for k, v in dataframes.items():
+    print('dataframe: ' + k)
+    print(v.head(15))
+
+# Work with the primary sheet (take the first one)
+keys_list = list(dataframes.keys())
+main_key = keys_list[0]
+df = dataframes[main_key].copy()
+
+# Basic cleaning: strip column names, coerce numerics
+df.columns = [str(c).strip() for c in df.columns]
+num_cols = ['Model Year', 'Electric Range', 'Base MSRP', 'Legislative District', 'DOL Vehicle ID', '2020 Census Tract']
+for col in num_cols:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+# Quick summary
+print('Rows: ' + str(len(df)))
+print('Columns: ' + str(len(df.columns)))
+print(df[['County','City','Make','Model','Electric Vehicle Type','Electric Range','Model Year']].describe(include='all'))
+
+# Visualization settings
+sns.set(style='whitegrid')
+
+# 1) Top EV makes
+top_makes = df['Make'].value_counts().head(10)
+plt.figure(figsize=(8,5))
+sns.barplot(x=top_makes.values, y=top_makes.index, palette='viridis')
+plt.title('Top 10 EV Makes by Count')
+plt.xlabel('Count')
+plt.ylabel('Make')
+plt.tight_layout()
+plt.show()
+print('Plotted Top 10 EV Makes by Count')
+
+# 2) EV types distribution
+plt.figure(figsize=(6,4))
+ax = df['Electric Vehicle Type'].value_counts().plot(kind='bar', color=['#4C78A8','#F58518','#54A24B','#E45756'])
+plt.title('Distribution of EV Types')
+plt.xlabel('EV Type')
+plt.ylabel('Count')
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
+plt.show()
+print('Plotted EV Types distribution')
+
+# 3) Model year trend
+year_counts = df['Model Year'].dropna().astype(int).value_counts().sort_index()
+plt.figure(figsize=(9,4))
+sns.lineplot(x=year_counts.index, y=year_counts.values, marker='o')
+plt.title('Registrations by Model Year')
+plt.xlabel('Model Year')
+plt.ylabel('Count')
+plt.tight_layout()
+plt.show()
+print('Plotted registrations trend by model year')
+
+# 4) Electric range distribution (clip to reasonable range to avoid outliers)
+if 'Electric Range' in df.columns:
+    rng = df['Electric Range'].dropna()
+    if len(rng) > 0:
+        rng = rng.clip(lower=0, upper=np.nanpercentile(rng, 99))
+        plt.figure(figsize=(8,4))
+        sns.histplot(rng, bins=30, kde=True, color='#4C78A8')
+        plt.title('Electric Range Distribution (0-99th pct)')
+        plt.xlabel('Miles')
+        plt.ylabel('Count')
+        plt.tight_layout()
+        plt.show()
+        print('Plotted Electric Range distribution')
+
+# 5) Top cities by EV count
+top_cities = df['City'].value_counts().head(10)
+plt.figure(figsize=(8,5))
+sns.barplot(x=top_cities.values, y=top_cities.index, palette='magma')
+plt.title('Top 10 Cities by EV Count')
+plt.xlabel('Count')
+plt.ylabel('City')
+plt.tight_layout()
+plt.show()
+print('Plotted Top 10 cities by EV count')
+
+# 6) Make vs. average electric range (for BEVs only to make it comparable)
+if 'Electric Vehicle Type' in df.columns:
+    bevs = df[df['Electric Vehicle Type'].str.contains('Battery Electric', na=False)].copy()
+    if 'Electric Range' in bevs.columns and bevs['Electric Range'].notna().sum() > 0:
+        make_avg_range = bevs.groupby('Make', as_index=False)['Electric Range'].mean().sort_values('Electric Range', ascending=False).head(12)
+        plt.figure(figsize=(8,5))
+        sns.barplot(data=make_avg_range, x='Electric Range', y='Make', palette='cubehelix')
+        plt.title('Average Electric Range by Make (Top 12, BEV only)')
+        plt.xlabel('Miles')
+        plt.ylabel('Make')
+        plt.tight_layout()
+        plt.show()
+        print('Plotted Average Electric Range by Make (BEV)')
+
+# 7) CAFV eligibility share
+if 'Clean Alternative Fuel Vehicle (CAFV) Eligibility' in df.columns:
+    cafv = df['Clean Alternative Fuel Vehicle (CAFV) Eligibility'].fillna('Unknown')
+    cafv_counts = cafv.value_counts()
+    plt.figure(figsize=(6,4))
+    cafv_counts.plot(kind='bar', color=['#2E86AB', '#A23B72', '#F18F01', '#C1D37F'])
+    plt.title('CAFV Eligibility Status')
+    plt.xlabel('Status')
+    plt.ylabel('Count')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.show()
+    print('Plotted CAFV eligibility status distribution')
+
+print('Analysis complete. Let me know if you want maps or city/county breakdowns saved to file.')
